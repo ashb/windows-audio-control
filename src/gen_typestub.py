@@ -12,13 +12,9 @@ from typing import Set, List, Mapping, Any
 AST_LOAD = ast.Load()
 AST_ELLIPSIS = ast.Ellipsis()
 AST_STORE = ast.Store()
-AST_TYPING_ANY = ast.Attribute(
-    value=ast.Name(id="typing", ctx=AST_LOAD), attr="Any", ctx=AST_LOAD
-)
+AST_TYPING_ANY = ast.Attribute(value=ast.Name(id="typing", ctx=AST_LOAD), attr="Any", ctx=AST_LOAD)
 GENERICS = {
-    "iter": ast.Attribute(
-        value=ast.Name(id="typing", ctx=AST_LOAD), attr="Iterator", ctx=AST_LOAD
-    ),
+    "iter": ast.Attribute(value=ast.Name(id="typing", ctx=AST_LOAD), attr="Iterator", ctx=AST_LOAD),
     "list": ast.Name(id="list", ctx=AST_STORE),
     "tuple": ast.Name(id="tuple", ctx=AST_STORE),
 }
@@ -59,8 +55,8 @@ def module_stubs(module) -> ast.Module:
         else:
             logging.warning(f"Unsupported root construction {member_name}")
     return ast.Module(
-        body=[ast.ImportFrom(module="__future__", names=[ast.alias(name="annotations")])] +
-        [ast.Import(names=[ast.alias(name=t)]) for t in sorted(types_to_import)]
+        body=[ast.ImportFrom(module="__future__", names=[ast.alias(name="annotations")])]
+        + [ast.Import(names=[ast.alias(name=t)]) for t in sorted(types_to_import)]
         + classes
         + functions,
         type_ignores=[],
@@ -75,34 +71,21 @@ def class_stubs(cls_name: str, cls_def, types_to_import: Set[str]) -> ast.ClassD
         if member_name == "__init__":
             try:
                 inspect.signature(cls_def)  # we check it actually exists
-                methods = [
-                    function_stub(member_name, cls_def, types_to_import)
-                ] + methods
+                methods = [function_stub(member_name, cls_def, types_to_import)] + methods
             except ValueError as e:
                 if "no signature found" not in str(e):
-                    raise ValueError(
-                        f"Error while parsing signature of {cls_name}.__init__: {e}"
-                    )
-        elif member_name in ATTRIBUTES_BLACKLIST or member_value == OBJECT_MEMBERS.get(
-            member_name
-        ):
+                    raise ValueError(f"Error while parsing signature of {cls_name}.__init__: {e}")
+        elif member_name in ATTRIBUTES_BLACKLIST or member_value == OBJECT_MEMBERS.get(member_name):
             pass
         elif inspect.isdatadescriptor(member_value):
-            attributes.extend(
-                data_descriptor_stub(member_name, member_value, types_to_import)
-            )
+            attributes.extend(data_descriptor_stub(member_name, member_value, types_to_import))
         elif inspect.isroutine(member_value):
             (magic_methods if member_name.startswith("__") else methods).append(
                 function_stub(member_name, member_value, types_to_import)
             )
         else:
             attributes.append(
-                ast.Assign(
-                    targets=[ast.Name(id=member_name, ctx=AST_STORE)],
-                    value=AST_ELLIPSIS,
-                    simple=True,
-                    lineno=0,
-                )
+                ast.Assign(targets=[ast.Name(id=member_name, ctx=AST_STORE)], value=AST_ELLIPSIS, simple=True, lineno=0)
             )
             # logging.warning(f"Unsupported member {member_name} of class {cls_name}")
 
@@ -111,24 +94,12 @@ def class_stubs(cls_name: str, cls_def, types_to_import: Set[str]) -> ast.ClassD
         cls_name,
         bases=[],
         keywords=[],
-        body=(
-            ([build_doc_comment(doc)] if doc else [])
-            + attributes
-            + methods
-            + magic_methods
-        )
-        or [AST_ELLIPSIS],
-        decorator_list=[
-            ast.Attribute(
-                value=ast.Name(id="typing", ctx=AST_LOAD), attr="final", ctx=AST_LOAD
-            )
-        ],
+        body=(([build_doc_comment(doc)] if doc else []) + attributes + methods + magic_methods) or [AST_ELLIPSIS],
+        decorator_list=[ast.Attribute(value=ast.Name(id="typing", ctx=AST_LOAD), attr="final", ctx=AST_LOAD)],
     )
 
 
-def data_descriptor_stub(
-    data_desc_name: str, data_desc_def, types_to_import: Set[str]
-) -> tuple:
+def data_descriptor_stub(data_desc_name: str, data_desc_def, types_to_import: Set[str]) -> tuple:
     annotation = None
     doc_comment = None
 
@@ -142,9 +113,7 @@ def data_descriptor_stub(
             raise ValueError("Multiple return annotations found with :return:")
 
     assign = ast.AnnAssign(
-        target=ast.Name(id=data_desc_name, ctx=AST_STORE),
-        annotation=annotation or AST_TYPING_ANY,
-        simple=1,
+        target=ast.Name(id=data_desc_name, ctx=AST_STORE), annotation=annotation or AST_TYPING_ANY, simple=1
     )
     return (assign, build_doc_comment(doc_comment)) if doc_comment else (assign,)
 
@@ -166,14 +135,9 @@ def function_stub(fn_name: str, fn_def, types_to_import: Set[str]) -> ast.Functi
 
 
 def arguments_stub(callable_name, callable_def, doc: str, types_to_import: Set[str]):
-    real_parameters: Mapping[str, inspect.Parameter] = inspect.signature(
-        callable_def
-    ).parameters
+    real_parameters: Mapping[str, inspect.Parameter] = inspect.signature(callable_def).parameters
     if callable_name == "__init__":
-        real_parameters = {
-            "self": inspect.Parameter("self", inspect.Parameter.POSITIONAL_ONLY),
-            **real_parameters,
-        }
+        real_parameters = {"self": inspect.Parameter("self", inspect.Parameter.POSITIONAL_ONLY), **real_parameters}
 
     parsed_param_types = {}
     optional_params = set()
@@ -205,9 +169,7 @@ def arguments_stub(callable_name, callable_def, doc: str, types_to_import: Set[s
             raise ValueError(
                 f"The parameter {param.name} of {callable_name} has no type definition in the function documentation"
             )
-        param_ast = ast.arg(
-            arg=param.name, annotation=parsed_param_types.get(param.name)
-        )
+        param_ast = ast.arg(arg=param.name, annotation=parsed_param_types.get(param.name))
 
         default_ast = None
         if param.default != param.empty:
@@ -316,26 +278,14 @@ def parse_type_to_ast(type_str: str, types_to_import: Set[str]):
                         ast.Name(id=parts[0], ctx=AST_LOAD),
                     )
                 )
-            elif (
-                len(group) == 2
-                and isinstance(group[0], str)
-                and isinstance(group[1], list)
-            ):
+            elif len(group) == 2 and isinstance(group[0], str) and isinstance(group[1], list):
                 if group[0] not in GENERICS:
-                    raise ValueError(
-                        f'Constructor {group[0]} is not supported in type "{type_str}"'
-                    )
+                    raise ValueError(f'Constructor {group[0]} is not supported in type "{type_str}"')
                 new_elements.append(
-                    ast.Subscript(
-                        value=GENERICS[group[0]],
-                        slice=parse_sequence(group[1]),
-                        ctx=AST_LOAD,
-                    )
+                    ast.Subscript(value=GENERICS[group[0]], slice=parse_sequence(group[1]), ctx=AST_LOAD)
                 )
             else:
-                new_elements.append(
-                    ast.parse(''.join(group)).body[0].value
-                )
+                new_elements.append(ast.parse("".join(group)).body[0].value)
 
         def binop_reducer(a, b):
             return ast.BinOp(left=a, right=b, op=ast.BitOr())
@@ -358,29 +308,17 @@ def build_doc_comment(doc: str):
 
 def format_with_black(code: str) -> str:
     result = subprocess.run(
-        ["python", "-m", "black", "-t", "py37", "--pyi", "-"],
-        input=code.encode(),
-        capture_output=True,
+        ["python", "-m", "black", "-t", "py37", "--pyi", "-"], input=code.encode(), capture_output=True
     )
     result.check_returncode()
     return result.stdout.decode()
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Extract Python type stub from a python module."
-    )
-    parser.add_argument(
-        "module_name", help="Name of the Python module for which generate stubs"
-    )
-    parser.add_argument(
-        "out",
-        help="Name of the Python stub file to write to",
-        type=argparse.FileType("wt"),
-    )
-    parser.add_argument(
-        "--black", help="Formats the generated stubs using Black", action="store_true"
-    )
+    parser = argparse.ArgumentParser(description="Extract Python type stub from a python module.")
+    parser.add_argument("module_name", help="Name of the Python module for which generate stubs")
+    parser.add_argument("out", help="Name of the Python stub file to write to", type=argparse.FileType("wt"))
+    parser.add_argument("--black", help="Formats the generated stubs using Black", action="store_true")
     args = parser.parse_args()
     stub_content = ast.unparse(module_stubs(importlib.import_module(args.module_name)))
     if args.black:
