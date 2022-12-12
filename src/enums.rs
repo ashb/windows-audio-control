@@ -1,31 +1,47 @@
+///"Type" enums
+use pyo3::prelude::*;
+
+use num_enum::TryFromPrimitive;
+
 use windows::Win32::Media::Audio::{
-    self, eAll, eCapture, eCommunications, eConsole, eMultimedia, eRender,
+    eAll, eCapture, eCommunications, eConsole, eMultimedia, eRender, DEVICE_STATE_ACTIVE,
+    DEVICE_STATE_DISABLED, DEVICE_STATE_NOTPRESENT, DEVICE_STATE_UNPLUGGED,
 };
 
-pub(crate) struct EDataFlow(pub Audio::EDataFlow);
-
-impl ::core::fmt::Debug for EDataFlow {
-    #[allow(unused_imports, non_upper_case_globals)]
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self.0 {
-            eRender => f.write_str("eRender"),
-            eCapture => f.write_str("eConsole"),
-            eAll => f.write_str("eAll"),
-            _ => f.write_fmt(format_args!("EDataFlow({})", self.0 .0)),
-        }
-    }
+#[derive(Debug, Eq, PartialEq, TryFromPrimitive, Clone, Copy)]
+#[pyclass(name = "DataFlow")]
+#[repr(i32)]
+pub enum DataFlow {
+    #[pyo3(name = "RENDER")]
+    Render = eRender.0,
+    #[pyo3(name = "CAPTURE")]
+    Capture = eCapture.0,
+    #[pyo3(name = "ALL")]
+    All = eAll.0,
 }
 
-pub(crate) struct ERole(pub Audio::ERole);
+#[derive(Debug, Eq, PartialEq, TryFromPrimitive, Clone, Copy)]
+#[pyclass(name = "Role")]
+#[repr(i32)]
+pub enum Role {
+    #[pyo3(name = "CONSOLE")]
+    Console = eConsole.0,
+    #[pyo3(name = "COMMS")]
+    Communications = eCommunications.0,
+    #[pyo3(name = "MULTIMEDIA")]
+    Multimedia = eMultimedia.0,
+}
 
-impl ::core::fmt::Debug for ERole {
-    #[allow(unused_imports, non_upper_case_globals)]
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self.0 {
-            eConsole => f.write_str("eConsole"),
-            eMultimedia => f.write_str("eMultimedia"),
-            eCommunications => f.write_str("eCommunications"),
-            _ => f.write_fmt(format_args!("ERole({})", self.0 .0)),
-        }
-    }
+#[derive(Debug, Eq, PartialEq, TryFromPrimitive, Clone, Copy)]
+#[pyclass(name = "DeviceState")]
+#[repr(u32)]
+pub enum DeviceState {
+    #[pyo3(name = "ACTIVE")]
+    Active = DEVICE_STATE_ACTIVE,
+    #[pyo3(name = "DISABLED")]
+    Disabled = DEVICE_STATE_DISABLED,
+    #[pyo3(name = "NOT_PRESENT")]
+    NotPresent = DEVICE_STATE_NOTPRESENT,
+    #[pyo3(name = "UNPLUGGED")]
+    Unplugged = DEVICE_STATE_UNPLUGGED,
 }
