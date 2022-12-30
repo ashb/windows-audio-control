@@ -1,0 +1,70 @@
+name: Setup project environment
+inputs:
+  rust-toolchain:
+    required: true
+  python-version:
+    required: true
+  python-extras:
+    required: false
+    default: ""
+    description: Python extras to inclue in this environment. requirements.txt (multiline) format
+
+outputs:
+  rust-cache-hit:
+    value: ${{ steps.cache-rust.outputs.cache-hit }}
+  python-cache-hit:
+    value: ${{ steps.setup-python.outputs.cache-hit }}
+
+runs:
+  using: "composite"
+  steps:
+    - id: cache-rust
+      name: cache rust
+      uses: Swatinem/rust-cache@v2
+      continue-on-error: true
+
+    - name: "Install Rust"
+      run: |
+        rustup toolchain install ${{ inputs.rust-toolchain }} --profile minimal --no-self-update
+        rustup default ${{ inputs.rust.toolchina }}
+      shell: bash
+    - name: "Install rust coverage components"
+      run: rustup component add llvm-tools-preview
+      shell: bash
+      if: matrix.rust-toolchain == 'nightly'
+
+    - name: "Set environment variables used by rust toolchain"
+      run: |
+        echo CARGO_TERM_COLOR=always >> $GITHUB_ENV
+        echo CARGO_INCREMENTAL=0 >> $GITHUB_ENV
+        echo RUST_BACKTRACE=1 >> $GITHUB_ENV
+
+        rustc --version --verbose
+      shell: bash
+
+    - run: cargo install rustfilt coverage-prepare
+      shell: bash
+      if: inputs.rust-toolchain == 'nightly' && steps.cache-rust.outputs.cache-hit != 'true'
+
+    - run: echo "$extras" > .python-extras
+      shell: bash
+      env:
+        extras: ${{ inputs.python-extras }}
+
+    - id: setup-python
+      name: set up python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ inputs.python-version }}
+        cache: 'pip'
+        cache-dependency-path: |
+          .python-extras
+          pyproject.toml
+
+    - name: Install extra python modules
+      run: |
+        [ -n .python-extra ] && python -m pip install -r .python-extras
+      shell: bash
+
+    - run: python -m pip freeze --local
+      shell: bash
