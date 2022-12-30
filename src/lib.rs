@@ -4,6 +4,8 @@ use anyhow::{Context, Result};
 use async_std::channel::{bounded, Receiver, RecvError};
 use collection::NotificationClient;
 use log::debug;
+use pyo3::exceptions::PyIndexError;
+use pyo3::types::PyDict;
 use pyo3::types::PyTuple;
 use pyo3::{exceptions::PyStopAsyncIteration, prelude::*};
 use windows::Win32::Media::Audio::IMMNotificationClient;
@@ -178,15 +180,49 @@ impl From<collection::DeviceNotificationEvent> for PyDeviceCollectionEvent {
 }
 
 #[pyclass(module = "windows_audio_events", subclass)]
-struct DeviceCollection(Arc<collection::DeviceEnumerator>);
+struct FilteredDeviceCollection(Arc<collection::DeviceCollection>);
 
 #[pymethods]
-impl DeviceCollection {
+impl FilteredDeviceCollection {
+    pub fn __len__(&self) -> Result<usize> {
+        Ok(self.0.length()? as usize)
+    }
+
+    pub fn __getitem__(&self, idx: usize) -> PyResult<PyAudioDevice> {
+        if idx >= self.0.length()? as usize {
+            return Err(PyIndexError::new_err("device index out of range"));
+        }
+        let dev = self.0.get(idx as u32)?;
+        Ok(PyAudioDevice(dev))
+    }
+}
+
+#[pyclass(module = "windows_audio_events", name = "DeviceCollection", subclass)]
+struct PyDeviceCollection(Arc<collection::DeviceEnumerator>);
+
+#[pymethods]
+impl PyDeviceCollection {
     #[new]
     pub fn __new__() -> Result<Self> {
-        Ok(DeviceCollection(Arc::new(
+        Ok(PyDeviceCollection(Arc::new(
             collection::DeviceEnumerator::new()?,
         )))
+    }
+
+    /// Get a collection of devices matching the given parameters
+    ///
+    /// :rtype: FilteredDeviceCollection
+    #[pyo3(text_signature = "($self, dataflow, state_mask = None)")]
+    pub fn devices(
+        &self,
+        dataflow: enums::DataFlow,
+        state_mask: Option<enums::DeviceState>,
+    ) -> Result<FilteredDeviceCollection> {
+        let c = self
+            .0
+            .get_collection(dataflow, state_mask.unwrap_or(enums::DeviceState::All))?;
+        debug!("Got DeviceCollection");
+        Ok(FilteredDeviceCollection(Arc::new(c)))
     }
 
     /// :rtype: AudioDevice
@@ -230,9 +266,9 @@ impl DeviceCollection {
     }
 }
 
-impl Drop for DeviceCollection {
+impl Drop for PyDeviceCollection {
     fn drop(&mut self) {
-        debug!("Dropping (Py)DeviceCollection");
+        debug!("Dropping (Py)DeviceEnumerator");
     }
 }
 
@@ -240,7 +276,7 @@ impl Drop for DeviceCollection {
 /// Async iterator of changes to devices in a collection
 struct CollectionEventsIterator {
     // Keep the collection alive as long as the iterator is
-    collection: Py<DeviceCollection>,
+    collection: Py<PyDeviceCollection>,
     source: Option<IMMNotificationClient>,
     rx: Receiver<anyhow::Result<collection::DeviceNotificationEvent>>,
 }
@@ -397,10 +433,13 @@ impl PyAudioDevice {
 
 /// Native implementation
 #[pymodule]
-fn _native(_py: Python, m: &PyModule) -> PyResult<()> {
+fn _native(py: Python, m: &PyModule) -> PyResult<()> {
+    let enum_module = py.import("enum")?;
+
     pyo3_log::init();
 
-    m.add_class::<DeviceCollection>()?;
+    m.add_class::<PyDeviceCollection>()?;
+    m.add_class::<FilteredDeviceCollection>()?;
     m.add_class::<PyAudioDevice>()?;
     m.add_class::<AudioDeviceEventIterator>()?;
 
@@ -408,8 +447,29 @@ fn _native(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_class::<DeviceCollectionEventType>()?;
     m.add_class::<PyDeviceCollectionEvent>()?;
     m.add_class::<PyVolumeChangeEvent>()?;
-    m.add_class::<enums::DeviceState>()?;
+    // m.add_class::<enums::DeviceState>()?;
     m.add_class::<enums::DataFlow>()?;
     m.add_class::<enums::Role>()?;
+
+    // IntEnum -- pyo3 doesn't support this yet, so we have to do it ourselves
+
+    let enum_values = PyDict::from_sequence(
+        py,
+        enums::DeviceState::all()
+            .iter()
+            .chain([enums::DeviceState::All])
+            .map(|state| (state.py_name().to_object(py), state.to_object(py)))
+            .collect::<Vec<(PyObject, PyObject)>>()
+            .to_object(py),
+    )?
+    .to_object(py);
+    m.add(
+        "DeviceState",
+        enum_module.getattr("IntFlag")?.call1(PyTuple::new(
+            py,
+            &["DeviceState".to_object(py), enum_values],
+        ))?,
+    )?;
+
     Ok(())
 }
