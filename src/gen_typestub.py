@@ -1,12 +1,15 @@
 from __future__ import annotations
 import argparse
 import ast
+import enum
 import importlib
 import inspect
+import itertools
 import logging
 import re
 import subprocess
 from functools import reduce
+import sys
 from typing import Set, List, Mapping, Any
 
 AST_LOAD = ast.Load()
@@ -63,11 +66,31 @@ def module_stubs(module) -> ast.Module:
     )
 
 
-def class_stubs(cls_name: str, cls_def, types_to_import: Set[str]) -> ast.ClassDef:
+def class_stubs(cls_name: str, cls_def: type, types_to_import: Set[str]) -> ast.ClassDef:
     attributes: List[ast.AST] = []
     methods: List[ast.AST] = []
     magic_methods: List[ast.AST] = []
+
+    parent_members = list(itertools.chain.from_iterable(inspect.getmembers(parent) for parent in cls_def.__bases__))
+
+    # Special case for enums:
+    if enum.Enum in cls_def.mro():
+        parent_members.extend(
+            (
+                ("__getitem__", cls_def.__getitem__),
+                ("__members__", cls_def.__members__),
+                ("__qualname__", cls_def.__qualname__),
+                ("__name__", cls_def.__name__),
+            )
+        )
+
     for (member_name, member_value) in inspect.getmembers(cls_def):
+        if (member_name, member_value) in parent_members:
+            continue
+
+        if inspect.isbuiltin(member_value):
+            continue
+
         if member_name == "__init__":
             try:
                 inspect.signature(cls_def)  # we check it actually exists
@@ -89,10 +112,16 @@ def class_stubs(cls_name: str, cls_def, types_to_import: Set[str]) -> ast.ClassD
             )
             # logging.warning(f"Unsupported member {member_name} of class {cls_name}")
 
-    doc = inspect.getdoc(cls_def)
+    doc = cls_def.__doc__
+    bases = []
+    for base in cls_def.__bases__:
+        if base is object:
+            continue
+        types_to_import.add(base.__module__)
+        bases.append(ast.Attribute(value=ast.Name(base.__module__), attr=base.__qualname__))
     return ast.ClassDef(
         cls_name,
-        bases=[],
+        bases=bases,
         keywords=[],
         body=(([build_doc_comment(doc)] if doc else []) + attributes + methods + magic_methods) or [AST_ELLIPSIS],
         decorator_list=[ast.Attribute(value=ast.Name(id="typing", ctx=AST_LOAD), attr="final", ctx=AST_LOAD)],
@@ -134,23 +163,28 @@ def function_stub(fn_name: str, fn_def, types_to_import: Set[str]) -> ast.Functi
     )
 
 
+ARGUMENT_TYPE = re.compile(
+    r"""
+    ^\s*
+    :type \s+ (?P<name>[a-zA-Z_]+[a-zA-Z_0-9]*): \s+ (?P<type>[^\n]*)
+    \s* $
+    """,
+    flags=re.VERBOSE | re.MULTILINE,
+)
+
+
 def arguments_stub(callable_name, callable_def, doc: str, types_to_import: Set[str]):
     real_parameters: Mapping[str, inspect.Parameter] = inspect.signature(callable_def).parameters
     if callable_name == "__init__":
         real_parameters = {"self": inspect.Parameter("self", inspect.Parameter.POSITIONAL_ONLY), **real_parameters}
 
     parsed_param_types = {}
-    optional_params = set()
-    for match in re.findall(r"\n *:type *([a-z_]+): ([^\n]*) *\n", doc):
-        if match[0] not in real_parameters:
+    for match in ARGUMENT_TYPE.finditer(doc):
+        if match['name'] not in real_parameters:
             raise ValueError(
-                f"The parameter {match[0]} is defined in the documentation but not in the function signature"
+                f"The parameter {match['name']} is defined in the documentation but not in the function signature"
             )
-        type = match[1]
-        if type.endswith(", optional"):
-            optional_params.add(match[0])
-            type = type[:-10]
-        parsed_param_types[match[0]] = convert_type_from_doc(type, types_to_import)
+        parsed_param_types[match['name']] = convert_type_from_doc(match['type'], types_to_import)
 
     # we parse the parameters
     posonlyargs = []
@@ -161,27 +195,11 @@ def arguments_stub(callable_name, callable_def, doc: str, types_to_import: Set[s
     kwarg = None
     defaults = []
     for param in real_parameters.values():
-        if (
-            param.name != "self"
-            and param.name not in parsed_param_types
-            and (callable_name == "__init__" or not callable_name.startswith("__"))
-        ):
-            raise ValueError(
-                f"The parameter {param.name} of {callable_name} has no type definition in the function documentation"
-            )
         param_ast = ast.arg(arg=param.name, annotation=parsed_param_types.get(param.name))
 
         default_ast = None
         if param.default != param.empty:
             default_ast = ast.Constant(param.default)
-            if param.name not in optional_params:
-                raise ValueError(
-                    f"Parameter {param.name} is optional according to the type but not flagged as such in the doc"
-                )
-        elif param.name in optional_params:
-            raise ValueError(
-                f"Parameter {param.name} is optional according to the documentation but has no default value"
-            )
 
         if param.kind == param.POSITIONAL_ONLY:
             posonlyargs.append(param_ast)
@@ -306,9 +324,11 @@ def build_doc_comment(doc: str):
     return ast.Expr(value=ast.Constant("\n".join(clean_lines).strip()))
 
 
-def format_with_black(code: str) -> str:
+def format_with_black(code: str, name: str) -> str:
     result = subprocess.run(
-        ["python", "-m", "black", "-t", "py37", "--pyi", "-"], input=code.encode(), capture_output=True
+        [sys.executable, "-m", "black", "-t", "py311", "--pyi", "--stdin-filename", name, "-"],
+        input=code.encode(),
+        stdout=subprocess.PIPE,
     )
     result.check_returncode()
     return result.stdout.decode()
@@ -320,7 +340,8 @@ if __name__ == "__main__":
     parser.add_argument("out", help="Name of the Python stub file to write to", type=argparse.FileType("wt"))
     parser.add_argument("--black", help="Formats the generated stubs using Black", action="store_true")
     args = parser.parse_args()
-    stub_content = ast.unparse(module_stubs(importlib.import_module(args.module_name)))
+    module = importlib.import_module(args.module_name)
+    stub_content = ast.unparse(module_stubs(module))
     if args.black:
-        stub_content = format_with_black(stub_content)
+        stub_content = format_with_black(stub_content, args.out.name)
     args.out.write(stub_content)

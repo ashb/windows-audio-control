@@ -1,4 +1,5 @@
 from __future__ import annotations
+import enum
 import typing
 
 @typing.final
@@ -37,6 +38,8 @@ class DataFlow:
 class DeviceCollection:
     events: CollectionEventsIterator
 
+    def devices(self, /, dataflow: DataFlow, state_mask: DeviceState = None) -> FilteredDeviceCollection:
+        """Get a collection of devices matching the given parameters"""
     def get_default_input_device(self, /) -> AudioDevice:
         """Get the current default input device (aka microphone)"""
     def get_default_output_device(self, /) -> AudioDevice:
@@ -58,11 +61,16 @@ class DeviceCollectionEventType:
     STATE_CHANGED = ...
 
 @typing.final
-class DeviceState:
+class DeviceState(enum.IntFlag):
     ACTIVE = ...
     DISABLED = ...
     NOT_PRESENT = ...
     UNPLUGGED = ...
+
+@typing.final
+class FilteredDeviceCollection:
+    def __getitem__(self, key, /): ...
+    def __len__(self, /): ...
 
 @typing.final
 class Role:

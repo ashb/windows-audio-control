@@ -211,6 +211,8 @@ impl PyDeviceCollection {
 
     /// Get a collection of devices matching the given parameters
     ///
+    /// :type dataflow: DataFlow
+    /// :type state_mask: DeviceState
     /// :rtype: FilteredDeviceCollection
     #[pyo3(text_signature = "($self, dataflow, state_mask = None)")]
     pub fn devices(
