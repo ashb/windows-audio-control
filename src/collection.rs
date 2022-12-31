@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use anyhow::Context;
 use async_std::task;
 use log::debug;
@@ -7,8 +9,8 @@ use windows::{
     core::{implement, AgileReference, Result},
     Win32::{
         Media::Audio::{
-            eConsole, IMMDeviceEnumerator, IMMNotificationClient, IMMNotificationClient_Impl,
-            MMDeviceEnumerator,
+            eConsole, IMMDeviceCollection, IMMDeviceEnumerator, IMMNotificationClient,
+            IMMNotificationClient_Impl, MMDeviceEnumerator,
         },
         System::Com::{CoCreateInstance, CLSCTX_INPROC_SERVER},
     },
@@ -140,6 +142,23 @@ impl IMMNotificationClient_Impl for NotificationClient {
     }
 }
 
+pub struct DeviceCollection(Arc<IMMDeviceCollection>);
+
+// This feels like a bad idea, but AgileReference doesn't work for IMMDeviceCollection
+unsafe impl Send for DeviceCollection {}
+unsafe impl Sync for DeviceCollection {}
+
+impl DeviceCollection {
+    pub fn length(&self) -> anyhow::Result<u32> {
+        Ok(unsafe { self.0.GetCount()? })
+    }
+
+    pub fn get(&self, idx: u32) -> anyhow::Result<device::AudioDevice> {
+        let device = unsafe { self.0.Item(idx)? };
+        device::AudioDevice::new(device)
+    }
+}
+
 pub struct DeviceEnumerator(AgileReference<IMMDeviceEnumerator>);
 
 impl DeviceEnumerator {
@@ -153,6 +172,24 @@ impl DeviceEnumerator {
         }
 
         Ok(DeviceEnumerator(AgileReference::new(&device_enumerator)?))
+    }
+
+    pub fn get_collection(
+        &self,
+        dataflow: enums::DataFlow,
+        state_mask: enums::DeviceState,
+    ) -> anyhow::Result<DeviceCollection> {
+        debug!("Getting devices for mask {:?}", state_mask);
+        match self.0.resolve() {
+            Ok(enumerator) => {
+                let collection =
+                    unsafe { enumerator.EnumAudioEndpoints(dataflow.into(), state_mask.into()) }
+                        .context("unable to get collection")?;
+
+                Ok(DeviceCollection(Arc::new(collection)))
+            }
+            Err(e) => Err(WindowsAudioError::from(e).into()),
+        }
     }
 
     pub fn get_default_device(
