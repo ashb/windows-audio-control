@@ -16,7 +16,7 @@ mod device;
 mod enums;
 mod errors;
 
-#[pyclass(module = "windows_audio_events", name = "VolumeChangeEvent")]
+#[pyclass(module = "windows_audio_control", name = "VolumeChangeEvent")]
 #[derive(Debug)]
 pub struct PyVolumeChangeEvent {
     /// :rtype: AudioDevice
@@ -179,7 +179,7 @@ impl From<collection::DeviceNotificationEvent> for PyDeviceCollectionEvent {
     }
 }
 
-#[pyclass(module = "windows_audio_events", subclass)]
+#[pyclass(module = "windows_audio_control", subclass)]
 struct FilteredDeviceCollection(Arc<collection::DeviceCollection>);
 
 #[pymethods]
@@ -197,7 +197,7 @@ impl FilteredDeviceCollection {
     }
 }
 
-#[pyclass(module = "windows_audio_events", name = "DeviceCollection", subclass)]
+#[pyclass(module = "windows_audio_control", name = "DeviceCollection", subclass)]
 struct PyDeviceCollection(Arc<collection::DeviceEnumerator>);
 
 #[pymethods]
@@ -274,7 +274,7 @@ impl Drop for PyDeviceCollection {
     }
 }
 
-#[pyclass(module = "windows_audio_events", subclass, unsendable)]
+#[pyclass(module = "windows_audio_control", subclass, unsendable)]
 /// Async iterator of changes to devices in a collection
 struct CollectionEventsIterator {
     // Keep the collection alive as long as the iterator is
@@ -336,7 +336,7 @@ impl Drop for CollectionEventsIterator {
     }
 }
 
-#[pyclass(module = "windows_audio_events", subclass, unsendable)]
+#[pyclass(module = "windows_audio_control", subclass, unsendable)]
 /// Async iterator of changes to a device's volume
 struct AudioDeviceEventIterator {
     // Keep the device alive so we can use it in `repr`, but don't create a _rust_ memory cycle
@@ -386,7 +386,7 @@ impl Drop for AudioDeviceEventIterator {
 }
 
 #[pyclass(
-    module = "windows_audio_events",
+    module = "windows_audio_control",
     name = "AudioDevice",
     subclass,
     unsendable

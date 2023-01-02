@@ -59,7 +59,7 @@ jobs:
     - name: python tests
       run: python -m pytest
 
-    - run: coverage-prepare lcov python/windows_audio_events/*.pyd
+    - run: coverage-prepare lcov python/windows_audio_control/*.pyd
       if: matrix.rust-toolchain == 'nightly'
 
     - uses: codecov/codecov-action@v3

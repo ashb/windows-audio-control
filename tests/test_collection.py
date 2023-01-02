@@ -2,7 +2,7 @@ import os
 import sys
 import pytest
 
-from windows_audio_events import DeviceCollection, AudioDevice, DeviceState, DataFlow
+from windows_audio_control import DeviceCollection, AudioDevice, DeviceState, DataFlow
 
 
 @pytest.fixture(scope="module")
