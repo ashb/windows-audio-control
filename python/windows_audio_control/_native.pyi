@@ -8,6 +8,8 @@ class AudioDevice:
     events: AudioDeviceEventIterator
     name: str
 
+    def set_default(self, /, role: Role):
+        """Make this device the default for the specified role"""
     def toggle_mute(self, /): ...
 
 @typing.final
@@ -36,9 +38,10 @@ class DataFlow:
 
 @typing.final
 class DeviceCollection:
+    devices: dict[str, AudioDevice]
     events: CollectionEventsIterator
 
-    def devices(self, /, dataflow: DataFlow, state_mask: DeviceState = None) -> FilteredDeviceCollection:
+    def filter_devices(self, /, dataflow: DataFlow, state_mask: DeviceState = None) -> FilteredDeviceCollection:
         """Get a collection of devices matching the given parameters"""
     def get_default_input_device(self, /) -> AudioDevice:
         """Get the current default input device (aka microphone)"""

@@ -4,19 +4,22 @@ use log::debug;
 
 use async_std::channel::Sender;
 use windows::{
-    core::{implement, AgileReference, AsImpl, Result},
+    core::{implement, AgileReference, AsImpl, Result, PCWSTR},
     Win32::{
         Devices::FunctionDiscovery::PKEY_Device_FriendlyName,
         Media::Audio::{
+            ERole,
             Endpoints::{
                 IAudioEndpointVolume, IAudioEndpointVolumeCallback,
                 IAudioEndpointVolumeCallback_Impl,
             },
             IMMDevice,
         },
-        System::Com::{CLSCTX_ALL, STGM_READ},
+        System::Com::{CoCreateInstance, CLSCTX_ALL, STGM_READ},
     },
 };
+
+use crate::policy_config::{IPolicyConfig, PolicyConfig};
 
 // use super::enums;
 use super::errors::WindowsAudioError;
@@ -88,6 +91,19 @@ impl AudioDevice {
             }
             self.volume_listener = None;
         }
+    }
+
+    pub fn set_default(&self, role: ERole) -> Result<()> {
+        let mut text = self.id.encode_utf16().collect::<Vec<_>>();
+        text.push(0);
+        let wstr = PCWSTR::from_raw(text.as_ptr());
+        unsafe {
+            let policy_config: IPolicyConfig = CoCreateInstance(&PolicyConfig, None, CLSCTX_ALL)?;
+
+            policy_config.SetDefaultEndpoint(wstr, role).ok()?;
+        }
+
+        Ok(())
     }
 }
 

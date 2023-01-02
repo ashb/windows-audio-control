@@ -17,6 +17,7 @@ classifiers = [
 [project.optional-dependencies]
 tests = [
     "pytest >= 7",
+    "pytest-asyncio",
     "black",
     "coverage",
 ]
@@ -38,3 +39,4 @@ color_output = true
 
 [tool.pytest.ini_options]
 addopts = "--tb=short"
+asyncio_mode="auto"
