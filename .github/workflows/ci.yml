@@ -50,7 +50,7 @@ jobs:
         $store.Open("ReadWrite")
         $store.Add($signature.SignerCertificate)
 
-        pnputil /add-driver vbMmeCable64_2003.inf /install
+        ./vBCABLE_Setup_x64.exe -i -h
 
         cd ..
         $tmp.BaseName | Remove-Item -Force -Recurse
