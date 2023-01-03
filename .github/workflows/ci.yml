@@ -51,7 +51,7 @@ jobs:
         $store.Add($signature.SignerCertificate)
 
         dir
-        .\vBCABLE_Setup_x64.exe -i -h
+        Start-Process  .\VBCABLE_Setup_x64.exe -Wait -ArgumentList "-i", "-h"
 
         cd ..
         $tmp.BaseName | Remove-Item -Force -Recurse
