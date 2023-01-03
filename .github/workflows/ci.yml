@@ -38,7 +38,7 @@ jobs:
     - name: Download VAC
       if: env.NUM_AUDIO_DEVICES == 0
       run: |
-        Set-PSDebug -Trace 2
+        Set-PSDebug -Trace 1
         $tmp = New-TemporaryFile
         Invoke-WebRequest -OutFile $tmp -Uri https://download.vb-audio.com/Download_CABLE/VBCABLE_Driver_Pack43.zip
         Expand-Archive $tmp
@@ -50,7 +50,8 @@ jobs:
         $store.Open("ReadWrite")
         $store.Add($signature.SignerCertificate)
 
-        ./vBCABLE_Setup_x64.exe -i -h
+        dir
+        .\vBCABLE_Setup_x64.exe -i -h
 
         cd ..
         $tmp.BaseName | Remove-Item -Force -Recurse
