@@ -6,7 +6,7 @@ use log::debug;
 
 use async_std::channel::Sender;
 use windows::{
-    core::{implement, AgileReference, Result},
+    core::{implement, AgileReference, Result, PCWSTR},
     Win32::{
         Media::Audio::{
             eConsole, IMMDeviceCollection, IMMDeviceEnumerator, IMMNotificationClient,
@@ -16,7 +16,7 @@ use windows::{
     },
 };
 
-use crate::com;
+use crate::{com, device::AudioDevice};
 
 use super::device;
 use super::enums;
@@ -172,6 +172,22 @@ impl DeviceEnumerator {
         }
 
         Ok(DeviceEnumerator(AgileReference::new(&device_enumerator)?))
+    }
+
+    pub fn get_device(&self, device_id: &str) -> anyhow::Result<AudioDevice> {
+        match self.0.resolve() {
+            Ok(enumerator) => {
+                let mut text = device_id.encode_utf16().collect::<Vec<_>>();
+                text.push(0);
+                let wstr = PCWSTR::from_raw(text.as_ptr());
+
+                match unsafe { enumerator.GetDevice(wstr) } {
+                    Ok(device) => device::AudioDevice::new(device),
+                    Err(e) => Err(WindowsAudioError::from(e).into()),
+                }
+            }
+            Err(e) => Err(WindowsAudioError::from(e).into()),
+        }
     }
 
     pub fn get_collection(

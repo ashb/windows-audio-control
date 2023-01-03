@@ -3,8 +3,11 @@ use std::sync::Arc;
 use anyhow::{Context, Result};
 use async_std::channel::{bounded, Receiver, RecvError};
 use collection::NotificationClient;
+use errors::WindowsAudioError;
 use log::debug;
 use pyo3::exceptions::PyIndexError;
+use pyo3::exceptions::PyKeyError;
+use pyo3::pyclass::CompareOp;
 use pyo3::types::PyDict;
 use pyo3::types::PyTuple;
 use pyo3::{exceptions::PyStopAsyncIteration, prelude::*};
@@ -15,8 +18,9 @@ mod com;
 mod device;
 mod enums;
 mod errors;
+mod policy_config;
 
-#[pyclass(module = "windows_audio_events", name = "VolumeChangeEvent")]
+#[pyclass(module = "windows_audio_control", name = "VolumeChangeEvent")]
 #[derive(Debug)]
 pub struct PyVolumeChangeEvent {
     /// :rtype: AudioDevice
@@ -179,7 +183,28 @@ impl From<collection::DeviceNotificationEvent> for PyDeviceCollectionEvent {
     }
 }
 
-#[pyclass(module = "windows_audio_events", subclass)]
+#[pyclass(module = "windows_audio_control")]
+struct DevicesDict(Arc<collection::DeviceEnumerator>);
+
+#[pymethods]
+impl DevicesDict {
+    pub fn __getitem__(&self, key: &str) -> PyResult<PyAudioDevice> {
+        match self.0.get_device(key) {
+            Ok(dev) => Ok(PyAudioDevice(dev)),
+            Err(err) => {
+                match err.downcast_ref::<WindowsAudioError>() {
+                    // Handle 0x80070057 specially ("The parameter is incorrect.")
+                    Some(WindowsAudioError::WindowsErr(e)) if e.code().0 as u32 == 0x80070057 => {
+                        Err(PyKeyError::new_err(format!("unknown device id {:?}", key)))
+                    }
+                    _ => Err(err.into()),
+                }
+            }
+        }
+    }
+}
+
+#[pyclass(module = "windows_audio_control", subclass)]
 struct FilteredDeviceCollection(Arc<collection::DeviceCollection>);
 
 #[pymethods]
@@ -197,7 +222,7 @@ impl FilteredDeviceCollection {
     }
 }
 
-#[pyclass(module = "windows_audio_events", name = "DeviceCollection", subclass)]
+#[pyclass(module = "windows_audio_control", name = "DeviceCollection", subclass)]
 struct PyDeviceCollection(Arc<collection::DeviceEnumerator>);
 
 #[pymethods]
@@ -209,13 +234,21 @@ impl PyDeviceCollection {
         )))
     }
 
+    /// Get devices keyed by device id
+    ///
+    /// :rtype: dict[str, AudioDevice]
+    #[getter]
+    pub fn devices(&self) -> DevicesDict {
+        DevicesDict(self.0.clone())
+    }
+
     /// Get a collection of devices matching the given parameters
     ///
     /// :type dataflow: DataFlow
     /// :type state_mask: DeviceState
     /// :rtype: FilteredDeviceCollection
     #[pyo3(text_signature = "($self, dataflow, state_mask = None)")]
-    pub fn devices(
+    pub fn filter_devices(
         &self,
         dataflow: enums::DataFlow,
         state_mask: Option<enums::DeviceState>,
@@ -274,7 +307,7 @@ impl Drop for PyDeviceCollection {
     }
 }
 
-#[pyclass(module = "windows_audio_events", subclass, unsendable)]
+#[pyclass(module = "windows_audio_control", subclass, unsendable)]
 /// Async iterator of changes to devices in a collection
 struct CollectionEventsIterator {
     // Keep the collection alive as long as the iterator is
@@ -336,7 +369,7 @@ impl Drop for CollectionEventsIterator {
     }
 }
 
-#[pyclass(module = "windows_audio_events", subclass, unsendable)]
+#[pyclass(module = "windows_audio_control", subclass, unsendable)]
 /// Async iterator of changes to a device's volume
 struct AudioDeviceEventIterator {
     // Keep the device alive so we can use it in `repr`, but don't create a _rust_ memory cycle
@@ -386,7 +419,7 @@ impl Drop for AudioDeviceEventIterator {
 }
 
 #[pyclass(
-    module = "windows_audio_events",
+    module = "windows_audio_control",
     name = "AudioDevice",
     subclass,
     unsendable
@@ -430,6 +463,29 @@ impl PyAudioDevice {
         let (tx, rx) = bounded(1);
         slf.borrow_mut(py).0.register_volume_change(tx)?;
         Ok(AudioDeviceEventIterator { rx, device: slf })
+    }
+
+    /// Make this device the default for the specified role
+    ///
+    /// :type role: Role
+    #[pyo3(text_signature = "($self, role)")]
+    pub fn set_default(&self, role: enums::Role) -> Result<()> {
+        self.0.set_default(role.into())?;
+        Ok(())
+    }
+
+    fn __richcmp__(&self, other: &Self, op: CompareOp, py: Python<'_>) -> PyObject {
+        match op {
+            CompareOp::Eq => self.eq(other).into_py(py),
+            CompareOp::Ne => self.ne(other).into_py(py),
+            _ => py.NotImplemented(),
+        }
+    }
+}
+impl PartialEq for PyAudioDevice {
+    fn eq(&self, other: &Self) -> bool {
+        // Best we can do is compare by id
+        self.0.id == other.0.id
     }
 }
 

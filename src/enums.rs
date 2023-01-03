@@ -5,7 +5,7 @@ use bitflags::bitflags;
 use num_enum::TryFromPrimitive;
 
 use windows::Win32::Media::Audio::{
-    eAll, eCapture, eCommunications, eConsole, eMultimedia, eRender, EDataFlow,
+    eAll, eCapture, eCommunications, eConsole, eMultimedia, eRender, EDataFlow, ERole,
     DEVICE_STATEMASK_ALL, DEVICE_STATE_ACTIVE, DEVICE_STATE_DISABLED, DEVICE_STATE_NOTPRESENT,
     DEVICE_STATE_UNPLUGGED,
 };
@@ -24,7 +24,7 @@ pub enum DataFlow {
 
 impl From<DataFlow> for EDataFlow {
     fn from(e: DataFlow) -> Self {
-        EDataFlow(e as i32)
+        Self(e as i32)
     }
 }
 
@@ -38,6 +38,12 @@ pub enum Role {
     Communications = eCommunications.0,
     #[pyo3(name = "MULTIMEDIA")]
     Multimedia = eMultimedia.0,
+}
+
+impl From<Role> for ERole {
+    fn from(e: Role) -> Self {
+        Self(e as i32)
+    }
 }
 
 bitflags! {
