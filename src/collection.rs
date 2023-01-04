@@ -210,11 +210,11 @@ impl DeviceEnumerator {
 
     pub fn get_default_device(
         &self,
-        role: windows::Win32::Media::Audio::EDataFlow,
+        dataflow: windows::Win32::Media::Audio::EDataFlow,
     ) -> anyhow::Result<device::AudioDevice> {
         match self.0.resolve() {
             Ok(enumerator) => {
-                let device = unsafe { enumerator.GetDefaultAudioEndpoint(role, eConsole)? };
+                let device = unsafe { enumerator.GetDefaultAudioEndpoint(dataflow, eConsole)? };
                 device::AudioDevice::new(device)
             }
             Err(e) => Err(WindowsAudioError::from(e).into()),

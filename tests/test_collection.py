@@ -19,8 +19,9 @@ def collection():
     return DeviceCollection()
 
 
-def test_import(collection: DeviceCollection):
-    pass
+def test_device_not_found(collection: DeviceCollection):
+    with pytest.raises(KeyError):
+        collection.devices["I am not a valid device ID"]
 
 
 @pytest.mark.skipif(int(os.environ.get('NUM_AUDIO_DEVICES', '1')) <= 0, reason="No audio devices found")

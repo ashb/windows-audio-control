@@ -20,6 +20,9 @@ mod enums;
 mod errors;
 mod policy_config;
 
+const ELEMENT_NOT_FOUND: windows::core::HRESULT = windows::core::HRESULT(-2147023728i32); // 0x80070490 as i32
+const PARAMETER_INCORRECT: windows::core::HRESULT = windows::core::HRESULT(-2147024809i32); // 0x80070057 as i32
+
 #[pyclass(module = "windows_audio_control", name = "VolumeChangeEvent")]
 #[derive(Debug)]
 pub struct PyVolumeChangeEvent {
@@ -194,7 +197,7 @@ impl DevicesDict {
             Err(err) => {
                 match err.downcast_ref::<WindowsAudioError>() {
                     // Handle 0x80070057 specially ("The parameter is incorrect.")
-                    Some(WindowsAudioError::WindowsErr(e)) if e.code().0 as u32 == 0x80070057 => {
+                    Some(WindowsAudioError::WindowsErr(e)) if e.code() == PARAMETER_INCORRECT => {
                         Err(PyKeyError::new_err(format!("unknown device id {:?}", key)))
                     }
                     _ => Err(err.into()),
@@ -225,6 +228,19 @@ impl FilteredDeviceCollection {
 #[pyclass(module = "windows_audio_control", name = "DeviceCollection", subclass)]
 struct PyDeviceCollection(Arc<collection::DeviceEnumerator>);
 
+impl PyDeviceCollection {
+    fn _get_default_device(&self, direction: enums::DataFlow) -> PyResult<PyAudioDevice> {
+        match self.0.get_default_device(direction.into()) {
+            Ok(dev) => Ok(PyAudioDevice(dev)),
+            Err(err) => match err.downcast_ref::<WindowsAudioError>() {
+                Some(WindowsAudioError::WindowsErr(e)) if e.code() == ELEMENT_NOT_FOUND => Err(
+                    PyKeyError::new_err(format!("No default device of type {:?} found", direction)),
+                ),
+                _ => Err(err.into()),
+            },
+        }
+    }
+}
 #[pymethods]
 impl PyDeviceCollection {
     #[new]
@@ -264,22 +280,16 @@ impl PyDeviceCollection {
     ///
     /// Get the current default output device (aka speakers)
     #[pyo3(text_signature = "($self)")]
-    pub fn get_default_output_device(&self) -> Result<PyAudioDevice> {
-        let dev = self
-            .0
-            .get_default_device(windows::Win32::Media::Audio::eRender)?;
-        Ok(PyAudioDevice(dev))
+    pub fn get_default_output_device(&self) -> PyResult<PyAudioDevice> {
+        self._get_default_device(enums::DataFlow::Render)
     }
 
     /// Get the current default input device (aka microphone)
     ///
     /// :rtype: AudioDevice
     #[pyo3(text_signature = "($self)")]
-    pub fn get_default_input_device(&self) -> Result<PyAudioDevice> {
-        let dev = self
-            .0
-            .get_default_device(windows::Win32::Media::Audio::eCapture)?;
-        Ok(PyAudioDevice(dev))
+    pub fn get_default_input_device(&self) -> PyResult<PyAudioDevice> {
+        self._get_default_device(enums::DataFlow::Capture)
     }
 
     /// :rtype: CollectionEventsIterator
