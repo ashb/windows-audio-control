@@ -52,12 +52,6 @@ impl IMMNotificationClient_Impl for NotificationClient {
         deviceid: &windows::core::PCWSTR,
         dwnewstate: u32,
     ) -> Result<()> {
-        eprintln!(
-            "OnDeviceStateChanged called {}: {}",
-            unsafe { deviceid.display() },
-            dwnewstate
-        );
-
         fn process(
             win_device_id: &windows::core::PCWSTR,
             dwnewstate: u32,
@@ -137,7 +131,6 @@ impl IMMNotificationClient_Impl for NotificationClient {
         _pwstrdeviceid: &windows::core::PCWSTR,
         _key: &windows::Win32::UI::Shell::PropertiesSystem::PROPERTYKEY,
     ) -> Result<()> {
-        // eprintln!("OnPropertyValueChanged {:#?},{} called", key.fmtid, key.pid);
         Ok(())
     }
 }
@@ -163,7 +156,6 @@ pub struct DeviceEnumerator(AgileReference<IMMDeviceEnumerator>);
 
 impl DeviceEnumerator {
     pub fn new() -> Result<Self> {
-        debug!("Creating DeviceEnumerator");
         let device_enumerator: IMMDeviceEnumerator;
         unsafe {
             com::com_initialized();
@@ -195,7 +187,6 @@ impl DeviceEnumerator {
         dataflow: enums::DataFlow,
         state_mask: enums::DeviceState,
     ) -> anyhow::Result<DeviceCollection> {
-        debug!("Getting devices for mask {:?}", state_mask);
         match self.0.resolve() {
             Ok(enumerator) => {
                 let collection =
@@ -225,7 +216,6 @@ impl DeviceEnumerator {
         debug!("Registering notification client {:?}", client);
         let enumerator = self.0.resolve()?;
         unsafe { enumerator.RegisterEndpointNotificationCallback(client)? };
-        debug!("Registered  notification client {:?}", client);
         Ok(())
     }
 

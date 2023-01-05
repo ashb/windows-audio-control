@@ -4,7 +4,6 @@ use anyhow::{Context, Result};
 use async_std::channel::{bounded, Receiver, RecvError};
 use collection::NotificationClient;
 use errors::WindowsAudioError;
-use log::debug;
 use pyo3::exceptions::PyIndexError;
 use pyo3::exceptions::PyKeyError;
 use pyo3::pyclass::CompareOp;
@@ -272,7 +271,6 @@ impl PyDeviceCollection {
         let c = self
             .0
             .get_collection(dataflow, state_mask.unwrap_or(enums::DeviceState::All))?;
-        debug!("Got DeviceCollection");
         Ok(FilteredDeviceCollection(Arc::new(c)))
     }
 
@@ -308,12 +306,6 @@ impl PyDeviceCollection {
             source: Some(source),
             rx,
         })
-    }
-}
-
-impl Drop for PyDeviceCollection {
-    fn drop(&mut self) {
-        debug!("Dropping (Py)DeviceEnumerator");
     }
 }
 
